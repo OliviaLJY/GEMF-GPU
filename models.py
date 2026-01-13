@@ -358,7 +358,7 @@ class Gillespie_v1(Simulator):
         node_to_update = chosen_flat_index // num_states
         new_state = chosen_flat_index % num_states
 
-        self.current_state[node_to_update] = new_state.int()
+        self.current_state[node_to_update] = new_state.to(self.current_state.dtype)
 
         return tau, self.current_state
 
@@ -438,7 +438,7 @@ class NodeWiseTauLeaping_v1(Simulator):
         chosen_new_states = torch.multinomial(
             active_node_rates, num_samples=1).squeeze(-1)
 
-        self.current_state[active_nodes_idx] = chosen_new_states.int()
+        self.current_state[active_nodes_idx] = chosen_new_states.to(self.current_state.dtype)
 
         return tau, self.current_state
 
@@ -528,7 +528,7 @@ class SystemWiseTauLeaping_v1(Simulator):
         nodes_to_update_idx = nodes_to_update_idx[update_mask]
         chosen_new_states = chosen_new_states[update_mask]
 
-        self.current_state[nodes_to_update_idx] = chosen_new_states.int()
+        self.current_state[nodes_to_update_idx] = chosen_new_states.to(self.current_state.dtype)
 
         return tau, self.current_state
 
@@ -613,7 +613,7 @@ class HeapTauLeaping_v1(Simulator):
         chosen_new_states = torch.multinomial(
             active_node_rates, num_samples=1).squeeze(-1)
 
-        self.current_state[active_nodes_idx] = chosen_new_states.int()
+        self.current_state[active_nodes_idx] = chosen_new_states.to(self.current_state.dtype)
 
         return tau, self.current_state
 
