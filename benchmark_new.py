@@ -6,6 +6,7 @@ import torch
 from models import SIS, Gillespie_v1, SystemWiseTauLeaping_v1, HeapTauLeaping_v1
 from network import BarabasiAlbert, WattsStrogatz
 
+"Takeaways: Heap tau-leaping is faster than system-wise in this run and closer to Gillespie (lower L1), especially on WattsStrogatz. To firm up, increase runs and steps, maybe sweep theta/K_MAX."
 
 def build_network(kind: str, N: int, device: str):
     if kind == "BarabasiAlbert":
