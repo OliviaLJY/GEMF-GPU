@@ -8,6 +8,18 @@ from network import BarabasiAlbert, WattsStrogatz
 
 "Takeaways: Heap tau-leaping is faster than system-wise in this run and closer to Gillespie (lower L1), especially on WattsStrogatz. To firm up, increase runs and steps, maybe sweep theta/K_MAX."
 
+# Benchmark summary (N=200, runs=2, steps=100):
+#
+# Network: BarabasiAlbert
+#   Gillespie_v1             time=0.0056s ±0.0004s L1 vs Gillespie=0.00 ±0.00
+#   SystemWiseTauLeaping_v1  time=0.0066s ±0.0000s L1 vs Gillespie=78.00 ±16.00
+#   HeapTauLeaping_v1        time=0.0039s ±0.0020s L1 vs Gillespie=69.00 ±5.00
+#
+# Network: WattsStrogatz
+#   Gillespie_v1             time=0.0049s ±0.0000s L1 vs Gillespie=0.00 ±0.00
+#   SystemWiseTauLeaping_v1  time=0.0066s ±0.0001s L1 vs Gillespie=49.00 ±39.00
+#   HeapTauLeaping_v1        time=0.0044s ±0.0017s L1 vs Gillespie=25.00 ±17.00
+
 def build_network(kind: str, N: int, device: str):
     if kind == "BarabasiAlbert":
         return BarabasiAlbert(num_node=N, num_edge=4)
