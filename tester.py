@@ -51,6 +51,13 @@ simulators: dict[str, Simulator] = {
         theta=5,
         K_MAX=50,
     ),
+    "HeapTauLeaping_v1": HeapTauLeaping_v1(
+        initial_state=initial_states,
+        spreading_model=models[spreading_model],
+        network=networks['RandomGeometric'],
+        theta=5,
+        K_MAX=50,
+    ),
 }
 
 # %%

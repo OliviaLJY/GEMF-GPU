@@ -551,3 +551,88 @@ class SystemWiseTauLeaping_v1(Simulator):
         counts = torch.bincount(
             self.current_state, minlength=num_states).cpu().numpy() # type: ignore
         return counts
+
+
+class HeapTauLeaping_v1(Simulator):
+    """System-wise tau-leaping using Poisson counts and top-k selection."""
+
+    def __init__(self,
+                 initial_state: torch.Tensor,
+                 spreading_model: SpreadingModel,
+                 network: Network,
+                 theta: int,
+                 K_MAX: int,
+                 ):
+
+        self.initial_state = initial_state
+        self.current_state = initial_state.clone()
+        self.current_time = 0.0
+        self.spreading_model = spreading_model
+        self.network = network
+        self.theta = theta
+        self.K_MAX = K_MAX
+        self._edge_index = network.edge_index.to(initial_state.device)
+
+    @torch.no_grad()
+    # @torch.compile()
+    def _step(self):
+        neighbor_counts = get_neighbor_state_counts_v1(
+            self._edge_index, self.current_state, self.spreading_model.num_state  # type: ignore
+        )
+        transition_rates = compute_total_rates_v1(
+            self.spreading_model.NODE_TRANSITION_RATE,
+            self.spreading_model.EDGE_TRANSITION_RATE,
+            self.current_state,  # type: ignore
+            neighbor_counts,
+        )
+
+        node_total_rates = transition_rates.sum(dim=1)
+        transition_rate_total = node_total_rates.sum()
+
+        if transition_rate_total <= eps:
+            return float('nan'), self.current_state
+
+        tau = self.theta / transition_rate_total
+
+        expected_events_per_node = node_total_rates * tau
+        poisson_counts = torch.poisson(expected_events_per_node)
+
+        positive_nodes = torch.count_nonzero(poisson_counts)
+        if positive_nodes == 0:
+            return float('nan'), self.current_state
+
+        k = min(self.K_MAX, int(positive_nodes))
+        top_counts, top_indices = torch.topk(poisson_counts, k)
+        active_mask = top_counts > 0
+        active_nodes_idx = top_indices[active_mask]
+
+        if active_nodes_idx.numel() == 0:
+            return float('nan'), self.current_state
+
+        active_node_rates = transition_rates[active_nodes_idx]
+        chosen_new_states = torch.multinomial(
+            active_node_rates, num_samples=1).squeeze(-1)
+
+        self.current_state[active_nodes_idx] = chosen_new_states.int()
+
+        return tau, self.current_state
+
+    def step(self):
+        tau, states = self._step()
+        tau = float(tau)
+        if tau != float('nan'):
+            self.current_time += tau
+        return tau, states
+
+    def reset(self):
+        self.current_state = self.initial_state.clone()  # type: ignore
+        self.current_time = 0.0
+
+    @property
+    @torch.no_grad()
+    @torch.compile()
+    def count_by_state(self):
+        num_states = self.spreading_model.num_state
+        counts = torch.bincount(
+            self.current_state, minlength=num_states).cpu().numpy() # type: ignore
+        return counts
