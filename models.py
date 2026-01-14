@@ -636,3 +636,94 @@ class HeapTauLeaping_v1(Simulator):
         counts = torch.bincount(
             self.current_state, minlength=num_states).cpu().numpy() # type: ignore
         return counts
+
+
+class AdaptiveTauLeaping_v1(Simulator):
+    """Adaptive tau-leaping with simple step-size control."""
+
+    def __init__(self,
+                 initial_state: torch.Tensor,
+                 spreading_model: SpreadingModel,
+                 network: Network,
+                 theta: float,
+                 max_tau: float = 1.0,
+                 max_events_per_node: float = 2.0,
+                 max_total_events: float = 0.2,
+                 shrink: float = 0.5,
+                 max_adjust: int = 8,
+                 ):
+
+        self.initial_state = initial_state
+        self.current_state = initial_state.clone()
+        self.current_time = 0.0
+        self.spreading_model = spreading_model
+        self.network = network
+        self.theta = theta
+        self.max_tau = max_tau
+        self.max_events_per_node = max_events_per_node
+        self.max_total_events = max_total_events
+        self.shrink = shrink
+        self.max_adjust = max_adjust
+        self._edge_index = network.edge_index.to(initial_state.device)
+
+    @torch.no_grad()
+    # @torch.compile()
+    def _step(self):
+        neighbor_counts = get_neighbor_state_counts_v1(
+            self._edge_index, self.current_state, self.spreading_model.num_state  # type: ignore
+        )
+        transition_rates = compute_total_rates_v1(
+            self.spreading_model.NODE_TRANSITION_RATE,
+            self.spreading_model.EDGE_TRANSITION_RATE,
+            self.current_state,  # type: ignore
+            neighbor_counts,
+        )
+
+        node_total_rates = transition_rates.sum(dim=1)
+        transition_rate_total = node_total_rates.sum()
+
+        if transition_rate_total <= eps:
+            return float('nan'), self.current_state
+
+        tau = min(self.theta / transition_rate_total, self.max_tau)
+
+        # adaptively reduce tau if expected jumps are too large
+        for _ in range(self.max_adjust):
+            expected_events = node_total_rates * tau
+            if expected_events.max() > self.max_events_per_node or expected_events.sum() > (self.max_total_events * self.current_state.numel()):
+                tau *= self.shrink
+            else:
+                break
+
+        poisson_counts = torch.poisson(node_total_rates * tau)
+        active_nodes_idx = (poisson_counts > 0).nonzero().squeeze(-1)
+        if active_nodes_idx.numel() == 0:
+            return float('nan'), self.current_state
+
+        active_node_rates = transition_rates[active_nodes_idx]
+        chosen_new_states = torch.multinomial(
+            active_node_rates, num_samples=1).squeeze(-1)
+
+        self.current_state[active_nodes_idx] = chosen_new_states.to(self.current_state.dtype)
+
+        return tau, self.current_state
+
+    def step(self):
+        tau, states = self._step()
+        tau = float(tau)
+        if tau != float('nan'):
+            self.current_time += tau
+        return tau, states
+
+    def reset(self):
+        self.current_state = self.initial_state.clone()  # type: ignore
+        self.current_time = 0.0
+
+    @property
+    @torch.no_grad()
+    @torch.compile()
+    def count_by_state(self):
+        num_states = self.spreading_model.num_state
+        counts = torch.bincount(
+            self.current_state, minlength=num_states).cpu().numpy() # type: ignore
+        return counts

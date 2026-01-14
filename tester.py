@@ -58,6 +58,17 @@ simulators: dict[str, Simulator] = {
         theta=5,
         K_MAX=50,
     ),
+    "AdaptiveTauLeaping_v1": AdaptiveTauLeaping_v1(
+        initial_state=initial_states,
+        spreading_model=models[spreading_model],
+        network=networks['RandomGeometric'],
+        theta=5.0,
+        max_tau=1.0,
+        max_events_per_node=2.0,
+        max_total_events=0.2,
+        shrink=0.5,
+        max_adjust=8,
+    ),
 }
 
 # %%
