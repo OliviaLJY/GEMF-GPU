@@ -62,10 +62,10 @@ simulators: dict[str, Simulator] = {
         initial_state=initial_states,
         spreading_model=models[spreading_model],
         network=networks['RandomGeometric'],
-        theta=5.0,
-        max_tau=1.0,
-        max_events_per_node=2.0,
-        max_total_events=0.2,
+        theta=8.0,
+        max_tau=2.0,
+        max_events_per_node=4.0,
+        max_total_events=0.4,
         shrink=0.5,
         max_adjust=8,
     ),
@@ -84,7 +84,7 @@ for name, simulator in simulators.items():
 
     simulator.reset()
 
-    for _ in range(200):
+    for _ in range(600):
         times, states = simulator.step()
         if times == float('nan'):
             break
@@ -112,7 +112,7 @@ for name, simulator in simulators.items():
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     
-    plt.xlim(left=0, right=5)
+    plt.xlim(left=0, right=6)
     
     os.makedirs('figures', exist_ok=True)
     plt.savefig(f'figures/{name}.png', bbox_inches='tight')
