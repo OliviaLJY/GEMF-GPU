@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import random
+import csv
 import numpy as np
 import torch
 import networkx as nx
@@ -137,7 +138,12 @@ def run_fastgemf(nx_graph, initial_states, beta, gamma, tmax, seed):
 
 def benchmark(args):
     if args.device == 'auto':
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            device = 'cuda'
+        elif torch.backends.mps.is_available():
+            device = 'mps'
+        else:
+            device = 'cpu'
     else:
         device = args.device
     torch.manual_seed(args.seed)
@@ -205,6 +211,22 @@ def benchmark(args):
             print(f"  {name:24s} time={stats['mean_time']:.4f}s ±{stats['std_time']:.4f}s "
                   f"L1 vs Gillespie={stats['mean_l1']:.2f} ±{stats['std_l1']:.2f}")
 
+    if args.output:
+        with open(args.output, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "network", "algorithm", "mean_time_s", "std_time_s",
+                "mean_l1", "std_l1", "N", "runs", "steps", "tmax"
+            ])
+            for net_kind, data in results.items():
+                for name, stats in data.items():
+                    writer.writerow([
+                        net_kind, name, stats["mean_time"], stats["std_time"],
+                        stats["mean_l1"], stats["std_l1"],
+                        args.N, args.runs, args.steps, args.tmax
+                    ])
+        print(f"\nSaved results to: {args.output}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark tau-leaping variants vs Gillespie.")
@@ -213,10 +235,11 @@ if __name__ == "__main__":
     parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--theta", type=float, default=5.0)
     parser.add_argument("--tmax", type=float, default=5.0)
+    parser.add_argument("--output", type=str, default="benchmark_results.csv")
     parser.add_argument("--kmax", type=int, default=50)
     parser.add_argument("--initial_infected", type=int, default=50)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
+    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda", "mps"])
     args = parser.parse_args()
     benchmark(args)
 

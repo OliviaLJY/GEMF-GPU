@@ -298,6 +298,11 @@ def compute_total_rates_v1(
     neighbor_state_counts: torch.Tensor,
 ) -> torch.Tensor:
 
+    if node_transition_rates.device != states.device:
+        node_transition_rates = node_transition_rates.to(states.device)
+    if edge_transition_rates.device != states.device:
+        edge_transition_rates = edge_transition_rates.to(states.device)
+
     spontaneous_rates = node_transition_rates[states]
     induced_rates = edge_transition_rates[states]
 
@@ -311,6 +316,21 @@ def compute_total_rates_v1(
         0), device=states.device), states] = 0.0
 
     return total_rates
+
+
+def sample_new_states(
+    transition_rates: torch.Tensor,
+    node_indices: torch.Tensor,
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    rates = transition_rates[node_indices]
+    row_sums = rates.sum(dim=1)
+    valid_mask = row_sums > 0
+    if valid_mask.sum() == 0:
+        return None, None
+    valid_nodes = node_indices[valid_mask]
+    chosen_states = torch.multinomial(
+        rates[valid_mask], num_samples=1).squeeze(-1)
+    return valid_nodes, chosen_states
 
 
 class Gillespie_v1(Simulator):
@@ -375,7 +395,6 @@ class Gillespie_v1(Simulator):
 
     @property
     @torch.no_grad()
-    @torch.compile()
     def count_by_state(self):
         num_states = self.spreading_model.num_state
         counts = torch.bincount(
@@ -433,12 +452,12 @@ class NodeWiseTauLeaping_v1(Simulator):
         if active_nodes_idx.numel() == 0:
             return float('nan'), self.current_state
 
-        active_node_rates = transition_rates[active_nodes_idx]
+        valid_nodes, chosen_new_states = sample_new_states(
+            transition_rates, active_nodes_idx)
+        if valid_nodes is None:
+            return float('nan'), self.current_state
 
-        chosen_new_states = torch.multinomial(
-            active_node_rates, num_samples=1).squeeze(-1)
-
-        self.current_state[active_nodes_idx] = chosen_new_states.to(self.current_state.dtype)
+        self.current_state[valid_nodes] = chosen_new_states.to(self.current_state.dtype)
 
         return tau, self.current_state
 
@@ -455,7 +474,6 @@ class NodeWiseTauLeaping_v1(Simulator):
 
     @property
     @torch.no_grad()
-    @torch.compile()
     def count_by_state(self):
         num_states = self.spreading_model.num_state
         counts = torch.bincount(
@@ -518,17 +536,18 @@ class SystemWiseTauLeaping_v1(Simulator):
             node_total_rates, num_samples=self.K_MAX, replacement=True
         )
 
-        weights_for_state_sampling = transition_rates[nodes_to_update_idx]
-
-        chosen_new_states = torch.multinomial(
-            weights_for_state_sampling, num_samples=1).squeeze(-1)
-
         update_mask = torch.arange(
             self.K_MAX, device=self.current_state.device) < k
         nodes_to_update_idx = nodes_to_update_idx[update_mask]
-        chosen_new_states = chosen_new_states[update_mask]
+        if nodes_to_update_idx.numel() == 0:
+            return float('nan'), self.current_state
 
-        self.current_state[nodes_to_update_idx] = chosen_new_states.to(self.current_state.dtype)
+        valid_nodes, chosen_new_states = sample_new_states(
+            transition_rates, nodes_to_update_idx)
+        if valid_nodes is None:
+            return float('nan'), self.current_state
+
+        self.current_state[valid_nodes] = chosen_new_states.to(self.current_state.dtype)
 
         return tau, self.current_state
 
@@ -545,7 +564,6 @@ class SystemWiseTauLeaping_v1(Simulator):
 
     @property
     @torch.no_grad()
-    @torch.compile()
     def count_by_state(self):
         num_states = self.spreading_model.num_state
         counts = torch.bincount(
@@ -609,11 +627,12 @@ class HeapTauLeaping_v1(Simulator):
         if active_nodes_idx.numel() == 0:
             return float('nan'), self.current_state
 
-        active_node_rates = transition_rates[active_nodes_idx]
-        chosen_new_states = torch.multinomial(
-            active_node_rates, num_samples=1).squeeze(-1)
+        valid_nodes, chosen_new_states = sample_new_states(
+            transition_rates, active_nodes_idx)
+        if valid_nodes is None:
+            return float('nan'), self.current_state
 
-        self.current_state[active_nodes_idx] = chosen_new_states.to(self.current_state.dtype)
+        self.current_state[valid_nodes] = chosen_new_states.to(self.current_state.dtype)
 
         return tau, self.current_state
 
@@ -630,7 +649,6 @@ class HeapTauLeaping_v1(Simulator):
 
     @property
     @torch.no_grad()
-    @torch.compile()
     def count_by_state(self):
         num_states = self.spreading_model.num_state
         counts = torch.bincount(
@@ -700,11 +718,12 @@ class AdaptiveTauLeaping_v1(Simulator):
         if active_nodes_idx.numel() == 0:
             return float('nan'), self.current_state
 
-        active_node_rates = transition_rates[active_nodes_idx]
-        chosen_new_states = torch.multinomial(
-            active_node_rates, num_samples=1).squeeze(-1)
+        valid_nodes, chosen_new_states = sample_new_states(
+            transition_rates, active_nodes_idx)
+        if valid_nodes is None:
+            return float('nan'), self.current_state
 
-        self.current_state[active_nodes_idx] = chosen_new_states.to(self.current_state.dtype)
+        self.current_state[valid_nodes] = chosen_new_states.to(self.current_state.dtype)
 
         return tau, self.current_state
 
@@ -721,7 +740,6 @@ class AdaptiveTauLeaping_v1(Simulator):
 
     @property
     @torch.no_grad()
-    @torch.compile()
     def count_by_state(self):
         num_states = self.spreading_model.num_state
         counts = torch.bincount(
